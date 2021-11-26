@@ -16,7 +16,7 @@ def read_input():
         2) 'analyze':      analyze wavefunction for a grid of Euler angles and a grid of parameters
     """
     
-    params['mode']      = 'propagate'
+    params['mode']      = 'analyze'
     """
         In analyze mode the user specifies only basis set parameters and parameters in the 'analysis' section below
         All other parameters are read from respective input files.
@@ -32,7 +32,7 @@ def read_input():
 
 
 
-    params['job_label']    = "Q1" #job identifier. In case of Psi4 ESP it can be metod/basis specification: "UHF-aug-cc-pVTZ" #"UHF_6-31Gss"
+    params['job_label']    = "R_exact_1" #job identifier. In case of Psi4 ESP it can be metod/basis specification: "UHF-aug-cc-pVTZ" #"UHF_6-31Gss"
 
 
     """====== Basis set parameters for BOUND ======"""
@@ -43,13 +43,15 @@ def read_input():
     """
     """ BOUND PART"""
     params['bound_nlobs_arr']   = (10,10,1)
-    params['bound_lmax_arr']    = (2,10,5)
+    params['bound_lmax_arr']    = (4,4,1)
     params['bound_binw_arr']    = (2.0,2.0,1)
 
-    params['bound_nbins']   = 15
-    params['bound_rshift']  = 0.0
+    params['bound_nbins']       = 100
+    params['bound_rshift']      = 0.0
 
     """ CONTINUUM PART"""
+    params['prop_nbins']        = 100
+
 
     params['map_type']      = 'DVR' #DVR, SPECT (mapping of basis set indices)
 
@@ -58,7 +60,7 @@ def read_input():
     params['time_units']    = "as"
 
     params['t0']            = 0.0 
-    params['tmax']          = 4.0 
+    params['tmax']          = 4000.0 
     params['dt']            = 2.0 # replace with the calculated number for N points per cycle
     params['wfn_saverate']  = 1 #save rate wrt. index labeling the timegrid. '1' means save all time-steps
 
@@ -101,8 +103,8 @@ def read_input():
         """ ====== FIELD PARAMETERS ====== """
 
         params['freq_units']    = "ev"      # nm or ev
-        params['omega']         = 20.0   # 23.128 nm = 54 eV, 60 nm = 20 eV
-        params['intensity']     = 5.0e+13   # W/cm^2: peak intensity
+        params['omega']         = 30.0   # 23.128 nm = 54 eV, 60 nm = 20 eV
+        params['intensity']     = 2.0e+14   # W/cm^2: peak intensity
 
         """ Available field types :
             1) RCPL   - right-circularly polarized field
@@ -121,8 +123,8 @@ def read_input():
         params['field_env_name']     = "gaussian" 
 
         """ gaussian pulse """
-        params['gauss_tau']     = 1000.0 #as: pulse duration (sigma)
-        params['gauss_t0']      = 2000.0 #as: pulse centre
+        params['gauss_tau']     = 500.0 #as: pulse duration (sigma)
+        params['gauss_t0']      = 1000.0 #as: pulse centre
 
         """ sin2 pulse """
         params['sin2_ncycles']  = 10
@@ -134,10 +136,10 @@ def read_input():
         """===== Potential energy matrix ====="""
         
       
-        params['gen_adaptive_quads'] = True # generate adaptive quadratures and save their parameters in a file?
+        params['gen_adaptive_quads'] = False # generate adaptive quadratures and save their parameters in a file?
 
-        params['use_adaptive_quads'] = True          # read adaptive quadrature parameters from file and use them
-        params['sph_quad_default']   = "lebedev_023" # global quadrature scheme in case we do not use adaptive quadratures.
+        params['use_adaptive_quads'] = False          # read adaptive quadrature parameters from file and use them
+        params['sph_quad_default']   = "lebedev_119" # global quadrature scheme in case we do not use adaptive quadratures.
 
         params['calc_method']        = 'jit' #jit, quadpy, vec: use jit, quadpy or vector implementation of the matrix elements
 
@@ -175,7 +177,7 @@ def read_input():
         params['hmat_format']           = "sparse_csr" # numpy_arr
         params['hmat_filter']           = 1e-12 #threshold value (in a.u.) for keeping matrix elements of the field-free Hamiltonian
 
-        params['num_ini_vec']           = 40 # number of initial wavefunctions (orbitals) stored in file
+        params['num_ini_vec']           = 20 # number of initial wavefunctions (orbitals) stored in file
         params['file_format']           = 'npz' #dat, npz, hdf5 (format for storage of the wavefunction and the Hamiltonian matrix)
 
         #params['']
@@ -198,17 +200,13 @@ def read_input():
         params['rv_wavepacket_dt']  = 0.1 #richmol time-step in ps #
 
         """====  SAVING ===="""
-        params['save_ham0']     = True #save the calculated bound state Hamiltonian
+        params['save_ham0']     = True #save the calculated bound state Hamiltonian?
         params['save_psi0']     = True #save psi0
         params['save_enr0']     = True #save eigenenergies for psi0
 
-        params['save_ham_init']  = True #save initial hamiltonian in a file for later use?
-        params['save_psi_init']  = True
-        params['save_enr_init']  = True
-
         params['wavepacket_format'] = "h5" #dat or h5
 
-        params['plot_elfield']      = False
+        params['plot_elfield']      = True
         params['plot_ini_orb']      = False #plot initial orbitals? iorb = 0,1, ..., ivec + 1
 
     
@@ -237,7 +235,7 @@ def read_input():
 
         
         rho2D = {   'name':         'rho2D',
-                    'plane':        ('XY','XZ','YZ'), #in which Cartesian planes do we want to plot rho2D? 'XY','XZ','YZ' or [nx,ny,nz] - vector normal to the plane
+                    'plane':        ('XY',), #in which Cartesian planes do we want to plot rho2D? 'XY','XZ','YZ' or [nx,ny,nz] - vector normal to the plane
                     'plot':         (True, GRAPHICS.gparams_rho2D_polar()), #specify parameters of the plot to load
                     'show':         False, # show image on screen                    
                     'save':         True,
@@ -294,7 +292,7 @@ def read_input():
                                     },                   
                     'th_grid':      (0.0,2.0*np.pi,360),
                     
-                    'nphi_pts':     20, #number of phi points for the integration over tha azimuthal angle.
+                    'nphi_pts':     1, #number of phi points for the integration over tha azimuthal angle.
                     
                     'legendre':     True, # calculate Legendre decomposition
 
@@ -334,25 +332,25 @@ def read_input():
         #params['obs_params_PECD'] = PECD
 
 
-        params['space_analyze_times']    =   list(np.linspace(0.0, params['tmax'], 2 ))
-        params['momentum_analyze_times'] =   list(np.linspace(params['tmax'], params['tmax'], 2 ))
+        params['space_analyze_times']    =   list(np.linspace(0.0, params['tmax'], 10 ))
+        params['momentum_analyze_times'] =   list(np.linspace(params['tmax'], params['tmax'], 1 ))
 
-        params['analyze_space']     = []
-        params['analyze_momentum']  = [PECD]
+        params['analyze_space']     = [rho2D]
+        params['analyze_momentum']  = [W2Dav]
         
 
-        params['PECD']  = PECD
-        params['W2Dav'] = W2Dav
-        params['W2D']   = W2D
-        params['rho2D'] = rho2D
-        params['bcoeffs'] = bcoeffs
+        params['PECD']      = PECD
+        params['W2Dav']     = W2Dav
+        params['W2D']       = W2D
+        params['rho2D']     = rho2D
+        params['bcoeffs']   = bcoeffs
 
 
         """ *** Momentum-space wavefunction *** """
         params['FT_method']       = "FFT_hankel"    # "FFT_cart" #or quadratures
         # Fourier transform is calculated from the wavefunction calculated on real-space grid bounded by rcutoff and Rmax.
         params['npts_r_ft']       = 500             # number of radial points over which the Hankel Transform is evaluated.
-        params['rcutoff']         = 30.0            # radial cut-off of the wavepacket in the calculation of momentum space distributions
+        params['rcutoff']         = 40.0            # radial cut-off of the wavepacket in the calculation of momentum space distributions
        
         params['plot_Plm']        = False           # plot and save photoelectron partial waves?
         params['plot_Flm']        = False           # plot and save individual Hankel transforms?

@@ -25,7 +25,7 @@ import itertools
 import json
 import h5py
 
-
+import unittest 
 
 import MAPPING
 import GRID
@@ -53,10 +53,10 @@ import matplotlib.ticker as ticker
 
 
 
-def prop_wf( params, ham0, psi_init, maparray, Gr, euler, ieuler ):
+def prop_wf( params, ham0, psi0, maparray, Gr, euler, ieuler ):
 
-    time_to_au = CONSTANTS.time_to_au[ params['time_units'] ]
-    wfn_saverate = params['wfn_saverate']
+    time_to_au      = CONSTANTS.time_to_au[ params['time_units'] ]
+    wfn_saverate    = params['wfn_saverate']
  
     #rho =  sparse.csc_matrix(ham_init).getnnz() / np.prod(sparse.csc_matrix(ham_init).shape)
     #print("density of the sparse hamiltonian matrix = " + str(rho) )
@@ -74,8 +74,8 @@ def prop_wf( params, ham0, psi_init, maparray, Gr, euler, ieuler ):
     #ham0 /= 2.0
 
 
-    Nbas = len(psi_init)
-    print("Nbas = " + str(Nbas))
+    Nbas0 = len(psi0)
+    print("Nbas for the bound Hamiltonian = " + str(Nbas0))
 
     print("Setting up time-grid")
     tgrid = np.linspace(    params['t0'] * time_to_au, 
@@ -96,10 +96,6 @@ def prop_wf( params, ham0, psi_init, maparray, Gr, euler, ieuler ):
         raise ValueError("Incorect field name")
 
 
-    """ Plot initial orbitals """
-    if params['plot_ini_orb'] == True:
-        PLOTS.plot_initial_orbitals(params,maparray,psi_init)
-
     if params['wavepacket_format'] == "dat":
         flwavepacket      = open(   params['job_directory'] + 
                                     params['wavepacket_file'] +
@@ -117,9 +113,15 @@ def prop_wf( params, ham0, psi_init, maparray, Gr, euler, ieuler ):
         raise ValueError("incorrect/not implemented format")
 
   
-    wavepacket        = np.zeros( ( len(tgrid), Nbas ) , dtype=complex )
-    psi               = psi_init[:,params['ivec']]
+    # Project the bound Hamiltonian onto the propagation Hamiltonian
+    Nbas, psi_init  = PROJECT_PSI_GLOBAL(params,maparray,psi0) 
+    ham_init        = PROJECT_HAM_GLOBAL(params, maparray, Nbas, Gr, ham0 )
+
+    wavepacket        = np.zeros( ( len(tgrid), Nbas ) , dtype = complex )
+    psi               = psi_init[:]
     psi[:]           /= np.sqrt( np.sum( np.conj(psi) * psi ) )
+
+
 
     if params['calc_free_energy'] == True:
         felenfile = open( params['job_directory'] + "FEL_energy.dat", 'w' )
@@ -166,7 +168,7 @@ def prop_wf( params, ham0, psi_init, maparray, Gr, euler, ieuler ):
         #dip = sparse.csr_matrix(dip)
         #print("Is the full hamiltonian matrix symmetric? " + str(check_symmetric( ham0 + dip )))
                 
-        psi_out             = expm_multiply( -1.0j * ( ham0 + dip ) * dt, psi ) 
+        psi_out             = expm_multiply( -1.0j * ( ham_init + dip ) * dt, psi ) 
         wavepacket[itime,:] = psi_out
         psi                 = wavepacket[itime,:]
 
@@ -193,16 +195,95 @@ def prop_wf( params, ham0, psi_init, maparray, Gr, euler, ieuler ):
     print("The time for the wavefunction propagation is: " + str("%10.3f"%(end_time_global-start_time_global)) + "s")
     flwavepacket.close()
 
+def PROJECT_HAM_GLOBAL(params, maparray, Nbas, Gr, ham0):
 
-def BUILD_HMAT_ROT(params, Gr, maparray, Nbas, grid_euler, irun):
-    """ Build hamiltonian with rotated ESP in unrotated basis, store the hamiltonian in a file """
+    ham = sparse.csr_matrix((Nbas, Nbas), dtype=complex) 
+    
+    # 0. Append the bound hamiltonian
+    ham[:Nbas0,:Nbas0] = ham0
+
+    #print(ham.todense())
+    #plt.spy(ham,precision=1e-8, markersize=2)
+    #plt.show()
+
+    # 1. Build the full KEO in propagation space minus bound space
+ 
+    start_time = time.time()
+    keomat = BOUND.BUILD_KEOMAT_FAST( params, maparray, Nbas , Gr )
+    end_time = time.time()
+    print("Time for construction of KEO matrix in full propagation space is " +  str("%10.3f"%(end_time-start_time)) + "s")
+
+    #plt.spy(keomat,precision=1e-8, markersize=2)
+    #plt.show()
+
+    #print("Shape of keomat: " + str(keomat.shape) )
+    #print("Shape of ham: " + str(ham.shape) )
+
+    keomat_copy = keomat.copy()
+    keomat_copy += keomat.getH()
+    for i in range(keomat.shape[0]):
+        keomat_copy[i,i] /=2.0 #-= hmat.diagonal()[i]
+
+
+    ham[:Nbas0,:Nbas0]  -= keomat_copy[:Nbas0, :Nbas0]
+    #plt.spy(ham,precision=1e-4, markersize=2)
+    #plt.show()
+
+    ham                 += keomat_copy  
+
+    #assert TEST_BOUNDARY_HAM(params,ham,Nbas0) == True, "Oh no! The bound Hamiltonian is incompatible with the full Hamiltonian."
+    
+    #plt.spy(ham,precision=1e-4, markersize=2)
+    #plt.show()
+
+    #BOUND.plot_mat(ham.todense())
+
+    # 2. Optional: add "long-range potential" 
+    # Build the full potential in propagation space minus bound spac
+        # consider cut-offs for the electrostatic potential 
+        #
+
+    return ham
+
+
+def PROJECT_PSI_GLOBAL(params, maparray, psi0):
+    Nbas = len(maparray)
+    Nbas0 = len(psi0)
+    print("Nbas = " + str(Nbas) + ", Nbas0 = " + str(Nbas0))
+
+    psi = np.zeros(Nbas, dtype = complex)    
+    psi[:Nbas0] = psi0[:,params['ivec']]
+
+    return Nbas, psi
+
+def TEST_BOUNDARY_HAM(params,ham,Nbas0):
+    """ diagonalize hmat """
+    start_time = time.time()
+    enr, coeffs = call_eigensolver(ham, params)
+    end_time = time.time()
+    print("Time for diagonalization of the full Hamiltonian: " +  str("%10.3f"%(end_time-start_time)) + "s")
+
+
+    """ diagonalize hmat0 """
+    start_time = time.time()
+    enr0, coeffs0 = call_eigensolver(ham[:Nbas0,:Nbas0], params)
+    end_time = time.time()
+    print("Time for diagonalization of the bound Hamiltonian: " +  str("%10.3f"%(end_time-start_time)) + "s")
+
+    print(enr-enr0)
+
+    return np.allclose(enr,enr0,atol=1e-4)
+
+
+def BUILD_HMAT0_ROT(params, Gr, maparray, Nbas, grid_euler, irun):
+    """ Build the stationary hamiltonian with rotated ESP in unrotated basis, store the hamiltonian in a file """
 
     if params['read_ham_init_file'] == True:
 
         if params['hmat_format']   == "numpy_arr":
-            if os.path.isfile(params['job_directory'] + params['file_hmat_init'] + "_" + str(irun) + ".dat"  ):
+            if os.path.isfile(params['job_directory'] + params['file_hmat0'] + "_" + str(irun) + ".dat"  ):
         
-                print (params['file_hmat_init'] + " file exist")
+                print (params['file_hmat0'] + " file exist")
                 hmat = read_ham_init_rot(params,irun)
                 """ diagonalize hmat """
                 start_time = time.time()
@@ -220,13 +301,15 @@ def BUILD_HMAT_ROT(params, Gr, maparray, Nbas, grid_euler, irun):
 
         elif params['hmat_format']   == "sparse_csr":
 
-            if os.path.isfile(params['job_directory'] + params['file_hmat_init'] + "_" + str(irun) + ".npz" ):
-                print (params['file_hmat_init'] + "_" + str(irun) + ".npz" + " file exist")
+            if os.path.isfile(params['job_directory'] + params['file_hmat0'] + "_" + str(irun) + ".npz" ):
+                print (params['file_hmat0'] + "_" + str(irun) + ".npz" + " file exist")
                 ham0 =  read_ham_init_rot(params,irun)
                 #plt.spy(ham0, precision=params['sph_quad_tol'], markersize=3, label="HMAT")
                 #plt.legend()
                 #plt.show()
         
+                """ Alternatively we can read enr and coeffs from file"""
+
                 """ diagonalize hmat """
                 start_time = time.time()
                 enr, coeffs = call_eigensolver(ham0, params)
@@ -245,7 +328,7 @@ def BUILD_HMAT_ROT(params, Gr, maparray, Nbas, grid_euler, irun):
             if params['esp_mode']  == 'anton':
                 hmat = sparse.csr_matrix((Nbas, Nbas), dtype=complex) #complex potential in Demekhin's work
             else:
-                hmat = sparse.csr_matrix((Nbas, Nbas), dtype=float) #if
+                hmat = sparse.csr_matrix((Nbas, Nbas), dtype=complex) #if
         else:
             raise ValueError("Incorrect format type for the Hamiltonian")
             exit()
@@ -340,11 +423,11 @@ def BUILD_HMAT_ROT(params, Gr, maparray, Nbas, grid_euler, irun):
         #print("Maximum imaginary part of the hamiltonian matrix = " + str(np.max(ham_filtered.imag)))
         #exit()
 
-        if params['save_ham_init'] == True:
+        if params['save_ham0'] == True:
             if params['hmat_format'] == 'sparse_csr':
-                sparse.save_npz( params['job_directory']  + params['file_hmat_init'] + "_" + str(irun) , ham_filtered , compressed = False )
+                sparse.save_npz( params['job_directory']  + params['file_hmat0'] + "_" + str(irun) , ham_filtered , compressed = False )
             elif params['hmat_format'] == 'numpy_arr':
-                with open( params['job_directory'] + params['file_hmat_init']+ "_" + str(irun) , 'w') as hmatfile:   
+                with open( params['job_directory'] + params['file_hmat0']+ "_" + str(irun) , 'w') as hmatfile:   
                     np.savetxt(hmatfile, ham_filtered, fmt = '%10.4e')
             print("Hamiltonian matrix saved.")
 
@@ -367,17 +450,22 @@ def BUILD_HMAT_ROT(params, Gr, maparray, Nbas, grid_euler, irun):
             print(str(v) + " " + str(np.sqrt( np.sum( np.conj(coeffs[:,v] ) * coeffs[:,v] ) )))
 
 
-        if params['save_psi_init'] == True:
-            psifile = open(params['job_directory']  + params['file_psi_init']+ "_"+str(irun), 'w')
+        if params['save_psi0'] == True:
+            psifile = open(params['job_directory']  + params['file_psi0']+ "_"+str(irun), 'w')
             for ielem,elem in enumerate(maparray):
                 psifile.write( " %5d"%elem[0] +  " %5d"%elem[1] + "  %5d"%elem[2] + \
                                 " %5d"%elem[3] +  " %5d"%elem[4] + "\t" + \
                                 "\t\t ".join('{:10.5e}'.format(coeffs[ielem,v]) for v in range(0,params['num_ini_vec'])) + "\n")
 
-        if params['save_enr_init'] == True:
-            with open(params['job_directory'] + params['file_enr_init']+ "_"+str(irun), "w") as energyfile:   
+        if params['save_enr0'] == True:
+            with open(params['job_directory'] + params['file_enr0']+ "_"+str(irun), "w") as energyfile:   
                 np.savetxt( energyfile, enr * CONSTANTS.au_to_ev , fmt='%10.5f' )
     
+
+        """ Plot initial orbitals """
+        if params['plot_ini_orb'] == True:
+            PLOTS.plot_initial_orbitals(params,maparray,coeffs)
+
 
         return ham_filtered, coeffs
 
@@ -473,9 +561,9 @@ def proj_wf0_wfinit_dvr(coeffs0, marray, Nbas_global):
 
 def read_ham_init(params):
     if params['hmat_format'] == 'sparse_csr':
-        hmat = sparse.load_npz( params['working_dir'] + params['file_hmat_init']+ ".npz" )
+        hmat = sparse.load_npz( params['working_dir'] + params['file_hmat0']+ ".npz" )
     elif params['hmat_format'] == 'numpy_arr':
-        with open( params['working_dir'] + params['file_hmat_init'] , 'r') as hmatfile:   
+        with open( params['working_dir'] + params['file_hmat0'] , 'r') as hmatfile:   
             hmat = np.loadtxt(hmatfile)
     return hmat
 
@@ -483,9 +571,9 @@ def read_ham_init(params):
 def read_ham_init_rot(params,irun):
     #rotated version
     if params['hmat_format'] == 'sparse_csr':
-        hmat = sparse.load_npz( params['job_directory'] + params['file_hmat_init']+ "_" + str(irun) + ".npz" )
+        hmat = sparse.load_npz( params['job_directory'] + params['file_hmat0']+ "_" + str(irun) + ".npz" )
     elif params['hmat_format'] == 'numpy_arr':
-        with open( params['job_directory'] + params['file_hmat_init'] + "_"+str(irun) + ".dat", 'r') as hmatfile:   
+        with open( params['job_directory'] + params['file_hmat0'] + "_"+str(irun) + ".dat", 'r') as hmatfile:   
             hmat = np.loadtxt(hmatfile)
     return hmat
 
@@ -677,7 +765,7 @@ def save_map(map,file):
 
 
 if __name__ == "__main__":   
-    print("KUREARFASDFDSFASD")
+
     start_time_total = time.time()
 
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
@@ -702,19 +790,29 @@ if __name__ == "__main__":
     for key, value in params.items():
         print(key, ":", value)
 
-
-    maparray_global, Nbas_global = MAPPING.GENMAP_FEMLIST(  params['FEMLIST'],
+    maparray0, Nbas0 = MAPPING.GENMAP_FEMLIST(  params['FEMLIST'],
                                                             params['bound_lmax'],
                                                             params['map_type'],
                                                             params['job_directory'] )
 
-    save_map(maparray_global,params['job_directory'] + 'map_global.dat')
 
-    Gr, Nr                       = GRID.r_grid(             params['bound_nlobs'], 
+    maparray, Nbas = MAPPING.GENMAP_FEMLIST(  params['FEMLIST_PROP'],
+                                                            params['bound_lmax'],
+                                                            params['map_type'],
+                                                            params['job_directory'] )
+
+    save_map(maparray0,params['job_directory'] + 'map0.dat')
+    save_map(maparray,params['job_directory'] + 'map_global.dat')
+
+    Gr0, Nr0                       = GRID.r_grid(             params['bound_nlobs'], 
                                                             params['bound_nbins'] , 
                                                             params['bound_binw'],  
                                                             params['bound_rshift'] )
 
+    Gr, Nr                       = GRID.r_grid(             params['bound_nlobs'], 
+                                                            params['prop_nbins'] , 
+                                                            params['bound_binw'],  
+                                                            params['bound_rshift'] )
 
     """ Read grid of Euler angles"""
     grid_euler  = read_euler_grid()
@@ -734,8 +832,9 @@ if __name__ == "__main__":
 
         #print(grid_euler[irun])
         """ Generate Initial Hamiltonian with rotated electrostatic potential in unrotated basis """
-        ham_init, psi_init = BUILD_HMAT_ROT(params, Gr, maparray_global, Nbas_global, grid_euler, irun)
-        prop_wf(params, ham_init, psi_init, maparray_global, Gr, grid_euler[irun], irun)
+        ham0, psi0 = BUILD_HMAT0_ROT(params, Gr0, maparray0, Nbas0, grid_euler, irun)
+
+        prop_wf(params, ham0, psi0, maparray, Gr, grid_euler[irun], irun)
 
 
 end_time_total = time.time()

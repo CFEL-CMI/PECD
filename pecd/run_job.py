@@ -177,11 +177,11 @@ def setup_input(params_input):
 
     """ === molecule directory ==== """ 
     if params_input['jobtype'] == "slurm":
-        params['main_dir']      = "/beegfs/desy/group/cfel/cmi/zakemil/PECD/pecd/" 
-        params['working_dir']   = "/beegfs/desy/group/cfel/cmi/zakemil/PECD/tests/molecules/" + params['molec_name'] + "/"
+        params['main_dir']      = "/beegfs/desy/group/cfel/cmi/zakemil/PECD_personal/PECD/pecd/" 
+        params['working_dir']   = "/beegfs/desy/group/cfel/cmi/zakemil/PECD_personal/PECD/tests/molecules/" + params['molec_name'] + "/"
     elif params_input['jobtype'] == "local":
-        params['main_dir']      = "/home/emil/Desktop/projects/PECD/pecd/"
-        params['working_dir']   = "/home/emil/Desktop/projects/PECD/tests/molecules/" + params['molec_name'] + "/"
+        params['main_dir']      = "/home/emil/Desktop/projects/PECD_personal/PECD/pecd/"
+        params['working_dir']   = "/home/emil/Desktop/projects/PECD_personal/PECD/tests/molecules/" + params['molec_name'] + "/"
 
     """ !!!In this version we are using uniform sized bins, allowing for an array of jobs
         Later expand to general radial basis defined by FEMLIST + array of input parameters!!!"""
@@ -192,15 +192,13 @@ def setup_input(params_input):
 
     """ list defining the radial grid"""
 
-    params['nlobs']     = params['bound_nlobs']
-    params['nbins']     = 0
-    params['binw']      = params['bound_binw']
 
     params['FEMLIST']   = [     [params['bound_nbins'], params['bound_nlobs'], params['bound_binw']] ,\
-                                [params['nbins'], params['nlobs'], params['binw']] ] 
+                                [0, params['bound_nlobs'], params['bound_binw']] ] 
 
-    #params['FEMLIST']   = [     [params['bound_nbins'], params['bound_nlobs'], params['bound_binw']] ,\
-    #                            [0,0,0.0] ] #to be used
+    params['FEMLIST_PROP']   = [ [params['prop_nbins'], params['bound_nlobs'], params['bound_binw']] ,\
+                                [0, params['bound_nlobs'], params['bound_binw']] ] 
+
 
     params['job_directory'] =  params['working_dir'] + params['molec_name']   + \
                                 "_" + str(params['bound_lmax'])    + \
@@ -217,9 +215,6 @@ def setup_input(params_input):
         params['rot_coeffs_file']   = params['working_dir'] + "rv_wavepackets/" + "coefficients_j0_j60.rchm"
 
         params['wavepacket_file']    = "wavepacket"
-
-        #place IF here analyze vs propagate
-
 
 
         """==== file paths and names ===="""
@@ -256,27 +251,6 @@ def setup_input(params_input):
                                         "_" + str(params['job_label'])    + ".dat"
 
 
-
-        params['file_hmat_init']      =   "hmat_init_" + params['molec_name']   + \
-                                        "_" + str(params['bound_lmax'])    + \
-                                        "_" + str(params['bound_nlobs']) + \
-                                        "_" + str('{:4.2f}'.format(params['bound_binw']))   + \
-                                        "_" + str(params['bound_nbins'] )   + \
-                                        "_" + str(params['job_label'])  
-
-        params['file_psi_init']       =   "psi_init_" + params['molec_name']   + \
-                                        "_" + str(params['bound_lmax'])    + \
-                                        "_" + str(params['bound_nlobs']) + \
-                                        "_" + str('{:4.2f}'.format(params['bound_binw']))    + \
-                                        "_" + str(params['bound_nbins'])    + \
-                                        "_" + str(params['job_label'])  
-
-        params['file_enr_init']       =   "enr_init_" + params['molec_name']   + \
-                                        "_" + str(params['bound_lmax'])    + \
-                                        "_" + str(params['bound_nlobs']) + \
-                                        "_" + str('{:4.2f}'.format(params['bound_binw']))    + \
-                                        "_" + str(params['bound_nbins'])   + \
-                                        "_" + str(params['job_label']) 
 
         params['file_quad_levels']  =   "quad_levels_" + params['molec_name']   + \
                                         "_" + str(params['bound_lmax'])    + \

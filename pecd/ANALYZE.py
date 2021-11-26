@@ -376,7 +376,7 @@ class analysis:
         """ Calculate real-space grid (r,theta) for evaluation of Hankel transform and for plottting"""
         """ The real-space grid determines the k-space grid returned by PyHank """
 
-        nbins   = self.params['bound_nbins'] 
+        nbins   = self.params['prop_nbins'] 
         rmax    = nbins * self.params['bound_binw']
         npts    = self.params['npts_r_ft'] 
         N_red   = npts 
@@ -751,7 +751,7 @@ class spacefuncs(analysis):
                     funcpars['plane_split'] = self.split_word(plane)
 
                     # call plotting function
-                    self.rho2D_plot(funcpars,polargrid,rho)
+                    self.rho2D_plot(funcpars,polargrid,rho,irun)
 
 
             if funcpars['save'] == True:
@@ -761,7 +761,7 @@ class spacefuncs(analysis):
                     np.savetxt(rhofile, rho, fmt = '%10.4e')
 
 
-    def rho2D_plot(self,funcpars,polargrid,rho): 
+    def rho2D_plot(self,funcpars,polargrid,rho,irun): 
         """ Produces contour plot for 2D spatial electron density f = rho(r,theta) """
 
         plot_params = funcpars['plot'][1] #all plot params
@@ -873,7 +873,7 @@ class spacefuncs(analysis):
                                             funcpars['plane_split'][0]+ "_" +
                                             str('{:.1f}'.format(funcpars['t']/time_to_au) ) +
                                             "_" +
-                                            params['helicity'] +
+                                            params['helicity'] + "_" + str(irun) +
                                             ".pdf",
                                             
                             dpi         =   plot_params['save_dpi'],
@@ -1784,7 +1784,7 @@ class momentumfuncs(analysis):
         ncontours = 20
 
         nlobs   = params['bound_nlobs']
-        nbins   = params['bound_nbins'] 
+        nbins   = params['prop_nbins'] 
         npoints = 100
         rmax    = nbins * params['bound_binw']
         rmin    = 0.0
@@ -2138,29 +2138,29 @@ if __name__ == "__main__":
     time_to_au = CONSTANTS.time_to_au[ params['time_units'] ]
 
     """ generate maps and grids """
-    params['maparray_global'], params['Nbas_global']    = MAPPING.GENMAP_FEMLIST(   params['FEMLIST'],
+    params['maparray_global'], params['Nbas_global']    = MAPPING.GENMAP_FEMLIST(   params['FEMLIST_PROP'],
                                                                                     params['bound_lmax'],
                                                                                     params['map_type'],
                                                                                     params['job_directory'] )
 
-    params['maparray_chi'], params['Nbas_chi']          = MAPPING.GENMAP_FEMLIST(   params['FEMLIST'],  
+    params['maparray_chi'], params['Nbas_chi']          = MAPPING.GENMAP_FEMLIST(   params['FEMLIST_PROP'],  
                                                                                     0,
                                                                                     params['map_type'], 
                                                                                     path )
 
     params['Gr'], params['Nr ']                         = GRID.r_grid(              params['bound_nlobs'], 
-                                                                                    params['bound_nbins'] , 
+                                                                                    params['prop_nbins'] , 
                                                                                     params['bound_binw'],  
                                                                                     params['bound_rshift'] )
 
     params['Gr_prim'], params['Nr_prim']                = GRID.r_grid_prim(         params['bound_nlobs'], 
-                                                                                    params['bound_nbins'], 
+                                                                                    params['prop_nbins'], 
                                                                                     params['bound_binw'], 
                                                                                     params['bound_rshift'] )
 
     params['chilist']                                   = PLOTS.interpolate_chi(    params['Gr_prim'], 
                                                                                     params['bound_nlobs'], 
-                                                                                    params['bound_nbins'], 
+                                                                                    params['prop_nbins'], 
                                                                                     params['bound_binw'], 
                                                                                     params['maparray_chi'])
 

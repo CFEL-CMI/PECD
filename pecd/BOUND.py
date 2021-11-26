@@ -92,7 +92,7 @@ def SH(l, m, theta, phi):
 	else:
 		return np.sqrt(2.0)*K(l,-m)*np.sin(-m*phi)*P(l,-m,np.cos(theta))
 
-@jit( nopython=True, parallel=False, cache = jitcache, fastmath=False) 
+#@jit( nopython=True, parallel=False, cache = jitcache, fastmath=False) 
 def calc_potmat_jit( vlist, VG, Gs ):
     pot = []
     potind = []
@@ -103,8 +103,9 @@ def calc_potmat_jit( vlist, VG, Gs ):
         G = Gs[vlist[p1,0]-1] 
         V = VG[vlist[p1,0]-1] #xi starts from 1,2,3 but python listst start from 0.
 
-        f = SH( vlist[p1,1] , vlist[p1,2]  , G[:,0], G[:,1] + np.pi ) * \
-            SH( vlist[p1,3] , vlist[p1,4]  , G[:,0], G[:,1] + np.pi ) * \
+        #sph_harm( vlist[p1,2] , vlist[p1,1] , G[:,1] + np.pi,  G[:,0])
+        f = np.conj(sph_harm( vlist[p1,2] , vlist[p1,1] , G[:,1] + np.pi,  G[:,0])) * \
+            sph_harm( vlist[p1,4] , vlist[p1,3] , G[:,1] + np.pi,  G[:,0]) *\
             V[:]
 
         pot.append( [np.dot(w,f.T) * 4.0 * np.pi ] )
@@ -279,7 +280,6 @@ def BUILD_KEOMAT_FAST(params, maparray, Nbas, Gr):
     if params['hmat_format'] == 'numpy_arr':    
         keomat =  np.zeros((Nbas, Nbas), dtype=float)
     elif params['hmat_format'] == 'sparse_csr':
-        #keomat =  np.zeros((Nbas, Nbas), dtype=float)
         keomat = sparse.csr_matrix((Nbas, Nbas), dtype=float)
     else:
         raise ValueError("Incorrect format type for the Hamiltonian")
@@ -415,7 +415,7 @@ def BUILD_JMAT(D,w):
 
 
 def BUILD_KD(JMAT,w,N): #checked 1 May 2021
-    Wb = 1.0 / np.sqrt( (w[0] ) ) #+ w[N-1]
+    Wb = 1.0 / np.sqrt( (w[0] + w[N-1]) ) #+ w[N-1]
     
     Ws = np.zeros(len(w), dtype = float)
     Ws = 1.0 / np.sqrt(w)
@@ -442,7 +442,7 @@ def BUILD_KD(JMAT,w,N): #checked 1 May 2021
 
 
 def BUILD_KC(JMAT,w,N):
-    Wb = 1.0 / np.sqrt( (w[0] ) ) #+ w[N-1]
+    Wb = 1.0 / np.sqrt( (w[0]+ w[N-1] ) ) #+ w[N-1]
     
     Ws = np.zeros(len(w), dtype = float)
     Ws = 1.0 / np.sqrt(w)
@@ -909,6 +909,7 @@ def BUILD_POTMAT0_ROT( params, maparray, Nbas , Gr, grid_euler, irun ):
     mol_xyz = rotate_mol_xyz(params, grid_euler, irun)
   
     if params['esp_mode'] == "exact":
+
         if  params['gen_adaptive_quads'] == True:
             start_time = time.time()
             sph_quad_list = gen_adaptive_quads_exact_rot( params,  Gr, mol_xyz, irun ) 
@@ -917,19 +918,29 @@ def BUILD_POTMAT0_ROT( params, maparray, Nbas , Gr, grid_euler, irun ):
 
         elif params['gen_adaptive_quads'] == False and params['use_adaptive_quads'] == True:
             sph_quad_list = read_adaptive_quads_rot(params,irun)
+
         elif params['gen_adaptive_quads'] == False and params['use_adaptive_quads'] == False:
             print("using global quadrature scheme")
+            sph_quad_list = []
+            xi = 0
+
+            for i in range(Gr.shape[0]):
+                for n in range(Gr.shape[1]):
+                    xi +=1
+                    sph_quad_list.append([i,n+1,xi,params['sph_quad_default']])
+            #print(sph_quad_list)
+            #exit()
 
     start_time = time.time()
     Gs = GRID.GEN_GRID( sph_quad_list, params['main_dir'])
     end_time = time.time()
-    print("Time for grid generation: " +  str("%10.3f"%(end_time-start_time)) + "s")
+    print("Time for generation of the Gs grid: " +  str("%10.3f"%(end_time-start_time)) + "s")
 
     if params['esp_mode'] == "exact":
         start_time = time.time()
         VG = POTENTIAL.BUILD_ESP_MAT_EXACT_ROT(params, Gs, Gr, mol_xyz, irun)
         end_time = time.time()
-        print("Time for construction of ESP on the grid: " +  str("%10.3f"%(end_time-start_time)) + "s")
+        print("Time for construction of the ESP on the grid: " +  str("%10.3f"%(end_time-start_time)) + "s")
 
     #if params['enable_cutoff'] == True: 
     #print() 
@@ -944,10 +955,10 @@ def BUILD_POTMAT0_ROT( params, maparray, Nbas , Gr, grid_euler, irun ):
 
     if params['calc_method'] == 'jit':
         start_time = time.time()
-        print(np.shape(VG))
-        print(np.shape(Gs))
+        #print(np.shape(VG))
+        #print(np.shape(Gs))
         potmat0, potind = calc_potmat_jit( vlist, VG, Gs )
-        print(potind)
+        #print(potind)
         end_time = time.time()
         print("First call: Time for construction of potential matrix is " +  str("%10.3f"%(end_time-start_time)) + "s")
 
@@ -1001,7 +1012,7 @@ def gen_tjmat(lmax_basis,lmax_multi):
                 for M in range(-L,L+1):
                     for m1 in range(-l1,l1+1):
                         for m2 in range(-l2,l2+1): 
-                            tjmat[l1,L,l2,L+M,l1+m1,l2+m2] = np.sqrt( (2.0*float(l1)+1) * (2.0*float(L)+1) /(  (2.0*float(l2)+1) * (4.0*np.pi) ) ) * spherical.clebsch_gordan(l2,m2,L,M,l1,m1) * spherical.clebsch_gordan(l2,0,L,0,l1,0)
+                            tjmat[l1,L,l2,L+M,l1+m1,l2+m2] = np.sqrt( (2.0*float(l2)+1) * (2.0*float(L)+1) /(  (2.0*float(l1)+1) * (4.0*np.pi) ) ) * spherical.clebsch_gordan(l2,m2,L,M,l1,m1) * spherical.clebsch_gordan(l2,0,L,0,l1,0)
                             # ( (-1.0)**(-M) ) * spherical.Wigner3j( l1,L, l2, m1, M, m2) * \
                             #                        spherical.Wigner3j( l1, L ,l2, 0, 0, 0) * \
                             #                        np.sqrt( (2.0*float(l1)+1) * (2.0*float(L)+1) * (2.0*float(l2)+1) / (4.0*np.pi) ) 
@@ -1014,7 +1025,93 @@ def gen_tjmat(lmax_basis,lmax_multi):
 
     return tjmat#/np.sqrt(4.0*np.pi)
 
+def gen_tjmat_quadpy(lmax_basis,lmax_multi):
+    """precompute all necessary 3-j symbols for the matrix elements of the multipole moments"""
 
+    #store in arrays:
+    # 2) tjmat[l,L,l',M,m'] = [0,...lmax,0...lmax,0,...,m+l,...,2l] - for definition check notes
+    tjmat = np.zeros( (lmax_basis+1, lmax_multi+1, lmax_basis+1, 2*lmax_multi + 1,  2 * lmax_basis + 1, 2 * lmax_basis + 1), dtype = complex)
+    
+    myscheme = quadpy.u3.schemes["lebedev_131"]()
+    """
+    Symbols: 
+            theta_phi[0] = theta in [0,pi]
+            theta_phi[1] = phi  in [-pi,pi]
+            sph_harm(m1, l1,  theta_phi[1]+np.pi, theta_phi[0])) means that we 
+                                                                 put the phi angle in range [0,2pi] and 
+                                                                 the  theta angle in range [0,pi] as required by 
+                                                                 the scipy special funciton sph_harm
+    """
+    for l1 in range(0,lmax_basis+1):
+        for l2 in range(0,lmax_basis+1):
+            for L in range(0,lmax_multi+1):
+                for M in range(-L,L+1):
+                    for m1 in range(-l1,l1+1):
+                        for m2 in range(-l2,l2+1):
+
+   
+    
+                            tjmat_re =  myscheme.integrate_spherical(lambda theta_phi: np.real(np.conjugate( sph_harm( m1, l1,  theta_phi[1]+np.pi, theta_phi[0] ) ) \
+                                                                            * sph_harm( M, L, theta_phi[1]+np.pi, theta_phi[0] ) \
+                                                                            * sph_harm( m2, l2, theta_phi[1]+np.pi, theta_phi[0] )) ) 
+
+                            tjmat_im =  myscheme.integrate_spherical(lambda theta_phi: np.imag(np.conjugate( sph_harm( m1, l1,  theta_phi[1]+np.pi, theta_phi[0] ) ) \
+                                                                            * sph_harm( M, L, theta_phi[1]+np.pi, theta_phi[0] ) \
+                                                                            * sph_harm( m2, l2, theta_phi[1]+np.pi, theta_phi[0] )) )
+
+
+
+                            tjmat[l1,L,l2,L+M,l1+m1,l2+m2] = tjmat_re + 1j * tjmat_im
+
+
+
+    return tjmat#/np.sqrt(4.0*np.pi)
+
+
+
+
+
+def gen_tjmat_leb(lmax_basis,lmax_multi):
+    """precompute all necessary 3-j symbols for the matrix elements of the multipole moments"""
+
+    #store in arrays:
+    # 2) tjmat[l,L,l',M,m'] = [0,...lmax,0...lmax,0,...,m+l,...,2l] - for definition check notes
+    tjmat = np.zeros( (lmax_basis+1, lmax_multi+1, lmax_basis+1, 2*lmax_multi + 1,  2 * lmax_basis + 1, 2 * lmax_basis + 1), dtype = complex)
+    
+    myscheme = quadpy.u3.schemes["lebedev_131"]()
+    """
+    Symbols: 
+            theta_phi[0] = theta in [0,pi]
+            theta_phi[1] = phi  in [-pi,pi]
+            sph_harm(m1, l1,  theta_phi[1]+np.pi, theta_phi[0])) means that we 
+                                                                 put the phi angle in range [0,2pi] and 
+                                                                 the  theta angle in range [0,pi] as required by 
+                                                                 the scipy special funciton sph_harm
+    """
+    for l1 in range(0,lmax_basis+1):
+        for l2 in range(0,lmax_basis+1):
+            for L in range(0,lmax_multi+1):
+                for M in range(-L,L+1):
+                    for m1 in range(-l1,l1+1):
+                        for m2 in range(-l2,l2+1):
+
+   
+    
+                            tjmat_re =  myscheme.integrate_spherical(lambda theta_phi: np.real(np.conjugate( sph_harm( m1, l1,  theta_phi[1]+np.pi, theta_phi[0] ) ) \
+                                                                            * sph_harm( M, L, theta_phi[1]+np.pi, theta_phi[0] ) \
+                                                                            * sph_harm( m2, l2, theta_phi[1]+np.pi, theta_phi[0] )) ) 
+
+                            tjmat_im =  myscheme.integrate_spherical(lambda theta_phi: np.imag(np.conjugate( sph_harm( m1, l1,  theta_phi[1]+np.pi, theta_phi[0] ) ) \
+                                                                            * sph_harm( M, L, theta_phi[1]+np.pi, theta_phi[0] ) \
+                                                                            * sph_harm( m2, l2, theta_phi[1]+np.pi, theta_phi[0] )) )
+
+
+
+                            tjmat[l1,L,l2,L+M,l1+m1,l2+m2] = tjmat_re + 1j * tjmat_im
+
+
+
+    return tjmat#/np.sqrt(4.0*np.pi)
 
 """ ============ POTMAT0 ROTATED with Multipole expansion ============ """
 def BUILD_POTMAT0_MULTIPOLES_ROT( params, maparray, Nbas , Gr, grid_euler, irun ):
@@ -1145,6 +1242,8 @@ def BUILD_POTMAT0_ANTON_ROT( params, maparray, Nbas , Gr, grid_euler, irun ):
 
     # 3. Build array of 3-j symbols
     tjmat       = gen_tjmat(params['bound_lmax'],params['multi_lmax'])
+    #tjmat       = gen_tjmat_quadpy(params['bound_lmax'],params['multi_lmax']) #for tjmat generated with quadpy
+    #tjmat       = gen_tjmat_leb(params['bound_lmax'],params['multi_lmax']) #for tjmat generated with generic lebedev
 
 
 
@@ -1477,7 +1576,7 @@ def heatmap( data, row_labels, col_labels, ax=None,
     im = ax.imshow(np.abs(data), **kwargs)
 
     # Create colorbar
-    im.set_clim(0, np.max(np.abs(data)))
+    im.set_clim(0, 2.0 ) #np.max(np.abs(data))
     cbar = ax.figure.colorbar(im, ax=ax,    **cbar_kw)
     cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")
 
